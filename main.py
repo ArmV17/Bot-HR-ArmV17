@@ -1,16 +1,32 @@
+import os
+import asyncio
+from dotenv import load_dotenv
 from highrise import BaseBot, User, Position
+from highrise.__main__ import BotDefinition, main
+
+# Cargar las variables del archivo .env
+load_dotenv()
 
 class MyBot(BaseBot):
     async def on_start(self, session_metadata):
-        print("¡El bot está en línea!")
+        print("¡Bot de High Rise encendido y listo!")
 
     async def on_chat(self, user: User, message: str):
-        print(f"{user.username} dijo: {message}")
-        
-        # Ejemplo: El bot responde a un saludo
-        if message.lower().startswith("hola"):
-            await self.highrise.chat(f"¡Hola {user.username}! Bienvenido a la sala.")
+        if message.lower() == "!hola":
+            await self.highrise.chat(f"¡Hola {user.username}!")
 
-    async def on_user_join(self, user: User, position: Position):
-        print(f"{user.username} ha entrado en la sala.")
-        await self.highrise.chat(f"Bienvenido @{user.username}")
+# Ejecución
+if __name__ == "__main__":
+    room_id = os.getenv("ROOM_ID")
+    api_token = os.getenv("BOT_TOKEN")
+    
+    # IMPORTANTE: Aquí pasamos directamente la clase MyBot
+    definitions = [
+        BotDefinition(
+            MyBot(), 
+            room_id, 
+            api_token
+        )
+    ]
+    
+    asyncio.run(main(definitions))
