@@ -1,0 +1,9 @@
+Bot-HR-ArmV17/
+
+venv/ (ignorado por git)
+
+.gitignore
+
+main.py
+
+requirements.txt
