@@ -7,6 +7,7 @@ from highrise.__main__ import BotDefinition, main
 # --- IMPORTACIONES DE TUS CARPETAS ---
 from funciones.moderacion.seguridad import registrar_entrada
 from funciones.moderacion.comandos import manejar_moderacion
+from funciones.db import guardar_log_chat
 
 load_dotenv()
 
@@ -20,15 +21,27 @@ class MyBot(BaseBot):
 
     # Evento: Alguien escribe en el chat PÚBLICO
     async def on_chat(self, user: User, message: str):
-        # 1. Ejecutar lógica de moderación
-        await manejar_moderacion(self, user, message)
+        # Guardamos el log primero
+        guardar_log_chat(user.username, message, "publico")
 
-        # 2. Comandos informativos en público
-        if message.lower() == "!mi_id":
-            await self.highrise.chat(f"@{user.username}, tu ID es: {user.id}")
+        from funciones.moderacion.comandos import obtener_rol
+        rol = await obtener_rol(user.id)
+
+        # Primero revisamos si debe ser advertido o baneado
+        from funciones.moderacion.seguridad import verificar_automod
+        fue_baneado = await verificar_automod(self, user, message, rol)
+        
+        if fue_baneado:
+            return # El usuario ya no está en la sala
+
+        # Si no rompió reglas, procesamos comandos normales
+        await manejar_moderacion(self, user, message)
 
     # Evento: Alguien le SUSURRA al bot
     async def on_whisper(self, user: User, message: str):
+        # Guardamos el susurro
+        guardar_log_chat(user.username, message, "susurro")
+
         # 1. También permitimos moderar por susurro para mayor discreción
         await manejar_moderacion(self, user, message)
 
