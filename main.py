@@ -8,6 +8,7 @@ from highrise.__main__ import BotDefinition, main
 from funciones.moderacion.seguridad import registrar_entrada
 from funciones.moderacion.comandos import manejar_moderacion
 from funciones.db import guardar_log_chat
+from funciones.ropa.ropa import manejar_ropa
 
 load_dotenv()
 
@@ -36,6 +37,8 @@ class MyBot(BaseBot):
 
         # Si no rompió reglas, procesamos comandos normales
         await manejar_moderacion(self, user, message)
+
+        await manejar_ropa(self, user, message)
 
     # Evento: Alguien le SUSURRA al bot
     async def on_whisper(self, user: User, message: str):
