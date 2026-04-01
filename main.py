@@ -9,6 +9,7 @@ from funciones.moderacion.seguridad import registrar_entrada
 from funciones.moderacion.comandos import manejar_moderacion
 from funciones.db import guardar_log_chat
 from funciones.ropa.ropa import manejar_ropa
+from funciones.movimiento.mover import manejar_movimiento
 
 load_dotenv()
 
@@ -39,6 +40,8 @@ class MyBot(BaseBot):
         await manejar_moderacion(self, user, message)
 
         await manejar_ropa(self, user, message)
+
+        await manejar_movimiento(self, user, message)
 
     # Evento: Alguien le SUSURRA al bot
     async def on_whisper(self, user: User, message: str):

@@ -42,47 +42,47 @@ async def equipar_prenda(bot: BaseBot, user: User, message: str):
     entrada = " ".join(parts[1:]).strip()
     
     try:
-        # --- NUEVA LÓGICA: ¿Es un ID directo? ---
+        # --- 1. Obtener el ID del ítem ---
         if "-" in entrada:
-            item_id = entrada
-            category = item_id.split("-")[0]
-            item_name_display = item_id
+            item_id = entrada # Si escribes el ID completo (ej: hair_back-...)
         else:
-            # Búsqueda normal por nombre
             items_encontrados = (await bot.webapi.get_items(item_name=entrada)).items
             if not items_encontrados:
                 await bot.highrise.send_whisper(user.id, f"❓ No encontré '{entrada}'.")
                 return
-            item = items_encontrados[0]
-            item_id = item.item_id
-            category = item.category
-            item_name_display = item.item_name
+            item_id = items_encontrados[0].item_id
 
-        # --- PROCESO DE EQUIPADO ---
-        outfit = (await bot.highrise.get_my_outfit()).outfit
+        # --- 2. Lógica de Categoría ---
+        # Determinamos qué categoría es viendo el inicio del ID
+        es_front = "hair_front" in item_id
+        es_back = "hair_back" in item_id
         
-        # Limpiar categoría (especial para pelos)
-        if "hair_front" in category:
-            outfit = [i for i in outfit if "hair_front" not in i.id and "hair_back" not in i.id]
+        # --- 3. Preparar el Outfit ---
+        outfit_data = await bot.highrise.get_my_outfit()
+        outfit = outfit_data.outfit
+        
+        # FILTRO INTELIGENTE:
+        # Si vas a poner un front, quitamos solo el front viejo.
+        # Si vas a poner un back, quitamos solo el back viejo.
+        if es_front:
+            outfit = [i for i in outfit if "hair_front" not in i.id]
+        elif es_back:
+            outfit = [i for i in outfit if "hair_back" not in i.id]
         else:
-            outfit = [i for i in outfit if i.id.split("-")[0][0:4] != category[0:4]]
+            # Para camisas, pantalones, etc., quitamos la categoría completa
+            categoria_general = item_id.split("-")[0][0:4]
+            outfit = [i for i in outfit if i.id.split("-")[0][0:4] != categoria_general]
         
-        # Añadir ítem principal
+        # --- 4. Añadir el ítem seleccionado ---
         nuevo_item = Item(type="clothing", amount=1, id=item_id, account_bound=False, active_palette=0)
         outfit.append(nuevo_item)
         
-        # Si es pelo, intentar poner la parte de atrás automática
-        if "hair_front" in category:
-            codigo_pelo = item_id.split("-")[1]
-            hair_back_id = f"hair_back-{codigo_pelo}"
-            outfit.append(Item(type="clothing", amount=1, id=hair_back_id, account_bound=False, active_palette=0))
-
+        # --- 5. Aplicar cambios ---
         asyncio.create_task(bot.highrise.set_outfit(outfit))
-        await bot.highrise.send_whisper(user.id, f"✨ Equipado: {item_name_display}")
+        await bot.highrise.send_whisper(user.id, f"✅ Equipado individualmente: {item_id}")
         
     except Exception as e:
-        print(f"Error en equipar: {e}")
-        await bot.highrise.send_whisper(user.id, "❌ No pude equipar ese ID. Verifica que el bot lo tenga en su inventario.")
+        print(f"Error en equipar individual: {e}")
 
 async def quitar_prenda(bot: BaseBot, user: User, message: str):
     parts = message.split(" ")
