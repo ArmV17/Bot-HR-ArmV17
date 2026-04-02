@@ -7,8 +7,8 @@ from highrise.__main__ import BotDefinition, main
 # --- IMPORTACIONES DE MODERACIÓN Y SEGURIDAD ---
 from funciones.saludo.saludo import manejar_bienvenida, manejar_despedida
 from funciones.moderacion.seguridad import registrar_entrada, verificar_automod
-# Importamos solo lo que existe en tu comandos.py
 from funciones.moderacion.comandos import obtener_rol, manejar_moderacion
+from funciones.moderacion.rango import asignar_rango_manual
 
 # --- IMPORTACIONES DE EMOTES ---
 from funciones.emotes.bucle import (
@@ -39,6 +39,9 @@ from funciones.movimiento.teleport_db import (
 from funciones.db import guardar_log_chat
 from funciones.ropa.ropa import manejar_ropa
 
+# --- IMPORTACIÓN DEL CEREBRO GEMINI ---
+from funciones.inteligencia.cerebro import generar_respuesta_ia
+
 load_dotenv()
 
 class MyBot(BaseBot):
@@ -47,8 +50,8 @@ class MyBot(BaseBot):
         self.room_users = set()
 
     async def on_start(self, session_metadata):
-        print("🚀 Bot V32: Universidad UTC - Sistema Maestro Conectado.")
-        print("🛡️ Moderación: Kick, Mute, Ban y Unmute activos mediante !comando.")
+        print("✨ Steffi V35: ¡Sistema Gemini Online! ✨")
+        print("👑 Control Maestro: Activado para _Armando_17_")
 
     async def on_user_join(self, user: User, position: Position):
         if user.id not in self.room_users:
@@ -70,55 +73,52 @@ class MyBot(BaseBot):
         msg_clean = message.lower().strip()
         guardar_log_chat(user.username, message, "publico")
         
-        # Obtenemos el rol del usuario (estudiante, admin, fundador)
+        # 0. COMANDO DE RANGOS (Solo Armando)
+        if msg_clean.startswith("rango @"):
+            await asignar_rango_manual(self, user, message)
+            return
+
+        # Obtenemos el rol para permisos
         rol = await obtener_rol(user.id)
         
-        # Filtro de palabras prohibidas
+        # Filtro de Automod (Palabras prohibidas)
         if await verificar_automod(self, user, message, rol): return 
 
         # --- 1. COMANDOS CON EXCLAMACIÓN (!) ---
         if message.startswith("!"):
-            # Ropa (Solo Fundador)
             if message.startswith("!outfit") or message.startswith("!ropa"):
                 if rol in ["fundador", "owner"]: await manejar_ropa(self, user, message)
-                else: await self.highrise.send_whisper(user.id, "❌ Solo el Fundador cambia mi ropa.")
                 return
 
-            # Moderación unificada (!kick, !mute, !ban, !unmute, !add_word, !clear_logs)
-            # Tu comandos.py ya gestiona los permisos internos de estos comandos.
+            # Moderación (!kick, !mute, !ban) y Movimiento (!ir, !tp)
             await manejar_moderacion(self, user, message)
-            
-            # Movimiento base (!ir, !tp, !stopbot)
             await manejar_movimiento(self, user, message)
             
             # Infraestructura (Solo Fundador)
             if rol in ["fundador", "owner"]:
-                if message.startswith("!sensor"): await marcar_proximidad(self, user, message)
-                elif message.startswith("!portal"): await crear_portal_externo(self, user, message)
-                elif message.startswith("!guardar"): await guardar_lugar(self, user, message)
-                elif message.startswith("!eliminar"): await eliminar_lugar(self, user, message)
-                elif message.startswith("!traslado"): await trasladar_toda_la_sala(self, user, message)
-                elif message.startswith("!enviar"): await mover_lista_seleccionada(self, user, message)
+                if any(message.startswith(c) for c in ["!sensor", "!portal", "!guardar", "!eliminar", "!traslado", "!enviar"]):
+                    if message.startswith("!sensor"): await marcar_proximidad(self, user, message)
+                    elif message.startswith("!portal"): await crear_portal_externo(self, user, message)
+                    elif message.startswith("!guardar"): await guardar_lugar(self, user, message)
+                    elif message.startswith("!eliminar"): await eliminar_lugar(self, user, message)
+                    elif message.startswith("!traslado"): await trasladar_toda_la_sala(self, user, message)
+                    elif message.startswith("!enviar"): await mover_lista_seleccionada(self, user, message)
             return 
 
         # --- 2. COMANDOS DE STAFF (tp y hechizar) ---
         if rol in ["admin", "fundador", "owner", "moderador"]:
             parts = msg_clean.split()
-            if msg_clean.startswith("tp @") and len(parts) == 3:
-                await tp_entre_usuarios(self, parts[1].replace("@",""), parts[2].replace("@",""))
-                return
-            elif msg_clean.startswith("tp @") and len(parts) == 5:
-                try:
-                    target = parts[1].replace("@","")
-                    x, y, z = float(parts[2]), float(parts[3]), float(parts[4])
-                    await tp_a_coordenadas_directo(self, target, x, y, z)
-                except: pass
+            if msg_clean.startswith("tp @") and len(parts) >= 3:
+                if len(parts) == 3: await tp_entre_usuarios(self, parts[1].replace("@",""), parts[2].replace("@",""))
+                elif len(parts) == 5:
+                    try: await tp_a_coordenadas_directo(self, parts[1].replace("@",""), float(parts[2]), float(parts[3]), float(parts[4]))
+                    except: pass
                 return
             elif msg_clean.startswith("hechizar @"):
                 await hechizar_usuario(self, user, message)
                 return
 
-        # --- 3. INTERACCIÓN PÚBLICA ---
+        # --- 3. INTERACCIÓN PÚBLICA / EMOTES ---
         if msg_clean.startswith("todos "):
             await emote_todos(self, user, message)
             return
@@ -131,11 +131,20 @@ class MyBot(BaseBot):
             await manejar_movimiento(self, user, message)
             return
 
-        # Emotes por número o nombre (Bucle)
+        # Emotes Bucle
         if await procesar_emote_directo(self, user, msg_clean): return
         
-        # Teletransporte por nombre de lugar
-        await viajar_a_nombre_directo(self, user, message)
+        # Lugares Guardados
+        viajo = await viajar_a_nombre_directo(self, user, message)
+        if viajo: return
+
+        # --- 4. EL CEREBRO IA DE STEFFI ---
+        # Responde solo si mencionan su nombre o "bot"
+        if "steffi" in msg_clean or "bot" in msg_clean:
+            # Obtenemos la respuesta ingeniosa de Gemini
+            respuesta_ia = await generar_respuesta_ia(user.username, message)
+            await self.highrise.chat(respuesta_ia)
+            return
 
     async def on_whisper(self, user: User, message: str):
         if message.lower() == "!pos":
