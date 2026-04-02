@@ -161,7 +161,7 @@ class MyBot(BaseBot):
 
         # --- 4. CEREBRO IA (STEFFI) ---
         # Responde con personalidad si mencionan a Steffi o al Bot
-        if "steffi" in msg_clean or "bot" in msg_clean:
+        if "steffi" in msg_clean:
             respuesta_ia = await generar_respuesta_ia(user.username, message)
             await self.highrise.chat(respuesta_ia)
             return

@@ -7,7 +7,7 @@ async def asignar_rango_manual(bot: BaseBot, user: User, message: str):
     Restricción: Exclusivo para _Armando_17_
     """
     # 1. BLOQUEO DE SEGURIDAD PARA EL FUNDADOR SUPREMO
-    if user.username.lower() != "_Armando_17_":
+    if user.username.lower() != "_armando_17_":
         await bot.highrise.send_whisper(user.id, "⛔ Solo El Fundador supremo tiene autoridad para cambiar rangos.")
         return
 
