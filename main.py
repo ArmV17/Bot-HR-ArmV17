@@ -1,6 +1,8 @@
 import os
 import asyncio
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 from highrise import BaseBot, User, Position
 from highrise.__main__ import BotDefinition, main
 
@@ -31,19 +33,29 @@ from funciones.movimiento.mover import (
 )
 from funciones.movimiento.perimetro import verificar_proximidad_tp
 from funciones.movimiento.teleport_db import (
-    viajar_a_nombre_directo, 
-    marcar_proximidad, 
-    crear_portal_externo, 
-    guardar_lugar, 
-    eliminar_lugar
+    viajar_a_nombre_directo, marcar_proximidad, 
+    crear_portal_externo, guardar_lugar, eliminar_lugar
 )
 
-# --- BASE DE DATOS, ROPA E IA ---
+# --- BASE DE DATOS Y ROPA ---
 from funciones.db import guardar_log_chat
 from funciones.ropa.ropa import manejar_ropa
-from funciones.inteligencia.cerebro import generar_respuesta_ia
 
 load_dotenv()
+
+# --- CONFIGURACIÓN KEEP ALIVE ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Steffi V39: ¡SISTEMA ONLINE (Sin IA) 💅"
+
+def run():
+    app.run(host='0.0.0.0', port=7860)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 class MyBot(BaseBot):
     def __init__(self):
@@ -51,8 +63,9 @@ class MyBot(BaseBot):
         self.room_users = set()
 
     async def on_start(self, session_metadata):
-        print("👑 Steffi V37: ¡CONTROL STAFF ACTIVADO! 👑")
-        print("💰 Comandos de movimiento y masivos restringidos a Admin+.")
+        print(f"✅ Steffi V39: BOT CONECTADO CON ID {session_metadata.user_id}")
+        await asyncio.sleep(4)
+        await self.highrise.chat("¡Steffi V39 ya llegó, mis cielas! 💅✨")
 
     async def on_user_join(self, user: User, position: Position):
         if user.id not in self.room_users:
@@ -74,41 +87,28 @@ class MyBot(BaseBot):
         msg_clean = message.lower().strip()
         guardar_log_chat(user.username, message, "publico")
         
-        # --- 0. COMANDOS DE PODER (SOLO _ARMANDO_17_) ---
+        # --- 0. COMANDOS DE PODER ---
         if msg_clean.startswith("rango @"):
             await asignar_rango_manual(self, user, message)
             return
-            
         if msg_clean.startswith("tip @"):
             await asignar_propina_maestra(self, user, message)
             return
-
         if msg_clean in ["tip sala", "tip stop"]:
             await manejar_control_tips(self, user, message)
             return
 
-        # Obtenemos el rol del usuario
         rol = await obtener_rol(user.id)
-        
-        if await verificar_automod(self, user, message, rol): 
-            return 
+        if await verificar_automod(self, user, message, rol): return 
 
-        # --- 1. COMANDOS CON EXCLAMACIÓN (!) ---
+        # --- 1. COMANDOS CON ! ---
         if message.startswith("!"):
-            # Ropa (Fundador/Owner)
             if message.startswith("!outfit") or message.startswith("!ropa"):
-                if rol in ["fundador", "owner"]: 
-                    await manejar_ropa(self, user, message)
+                if rol in ["fundador", "owner"]: await manejar_ropa(self, user, message)
                 return
-
-            # Moderación (!kick, !mute, !ban) -> Moderadores pueden usarlos
             await manejar_moderacion(self, user, message)
-            
-            # Movimiento general Staff
             if rol in ["moderador", "admin", "fundador", "owner"]:
                 await manejar_movimiento(self, user, message)
-            
-            # Infraestructura (Solo Fundador/Owner)
             if rol in ["fundador", "owner"]:
                 if any(message.startswith(c) for c in ["!sensor", "!portal", "!guardar", "!eliminar", "!traslado", "!enviar"]):
                     if message.startswith("!sensor"): await marcar_proximidad(self, user, message)
@@ -119,52 +119,50 @@ class MyBot(BaseBot):
                     elif message.startswith("!enviar"): await mover_lista_seleccionada(self, user, message)
             return 
 
-        # --- 2. COMANDOS EXCLUSIVOS ADMIN Y FUNDADOR ---
+        # --- 2. COMANDOS STAFF ALTO ---
         if rol in ["admin", "fundador", "owner"]:
-            # Movimiento y Seguimiento
             if msg_clean in ["sigueme", "detente"]:
                 await manejar_movimiento(self, user, message)
                 return
-
-            # Emotes Masivos
             if msg_clean.startswith("todos "):
                 await emote_todos(self, user, message)
                 return
-
-            # Hechizar y Stop
             if msg_clean.startswith("hechizar @"):
                 await hechizar_usuario(self, user, message)
                 return
-            
             if msg_clean == "stop":
                 await manejar_comando_stop(self, user)
                 return
-
-            # Teletransporte avanzado
+            
             parts = msg_clean.split()
             if msg_clean.startswith("tp @") and len(parts) >= 3:
-                if len(parts) == 3: 
-                    await tp_entre_usuarios(self, parts[1].replace("@",""), parts[2].replace("@",""))
+                if len(parts) == 3: await tp_entre_usuarios(self, parts[1].replace("@",""), parts[2].replace("@",""))
                 elif len(parts) == 5:
                     try: await tp_a_coordenadas_directo(self, parts[1].replace("@",""), float(parts[2]), float(parts[3]), float(parts[4]))
                     except: pass
                 return
 
-        # --- 3. INTERACCIONES PÚBLICAS ---
-        # Emotes por número (1-92)
+        # --- 3. INTERACCIONES PÚBLICAS Y EMOTES ---
+        # Si pones un número (1, 2, 3...) o emote directo, aquí se procesa.
         if await procesar_emote_directo(self, user, msg_clean): 
             return
-        
-        # Teletransporte por nombre público
+            
         if await viajar_a_nombre_directo(self, user, message): 
-            return
-
-        # Cerebro IA (Steffi)
-        if "steffi" in msg_clean:
-            respuesta_ia = await generar_respuesta_ia(user.username, message)
-            await self.highrise.chat(respuesta_ia)
             return
 
     async def on_whisper(self, user: User, message: str):
         if message.lower() == "!pos":
             res = await self.highrise.get_room_users()
+            pos = next((p for u, p in res.content if u.id == user.id), None)
+            if pos: await self.highrise.send_whisper(user.id, f"📍 Pos: {pos.x} {pos.y} {pos.z}")
+
+if __name__ == "__main__":
+    room_id = os.getenv("ROOM_ID")
+    api_token = os.getenv("BOT_TOKEN")
+    
+    if room_id and api_token:
+        keep_alive() 
+        definitions = [BotDefinition(MyBot(), room_id, api_token)]
+        asyncio.run(main(definitions))
+    else:
+        print("❌ Error: Faltan las variables de entorno en el archivo .env")

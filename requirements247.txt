@@ -1,9 +1,6 @@
 # --- MOTOR DEL BOT ---
 highrise-bot-sdk
 
-# --- INTELIGENCIA ARTIFICIAL ---
-google-generativeai
-
 # --- BASE DE DATOS Y RED ---
 supabase
 requests
