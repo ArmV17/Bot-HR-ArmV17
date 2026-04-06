@@ -51,8 +51,8 @@ class MyBot(BaseBot):
         self.room_users = set()
 
     async def on_start(self, session_metadata):
-        print("👑 Steffi V36: ¡SISTEMA ARMANDO_17 ACTIVO! 👑")
-        print("💰 Tesorería, Sorteos e IA listos para operar.")
+        print("👑 Steffi V37: ¡CONTROL STAFF ACTIVADO! 👑")
+        print("💰 Comandos de movimiento y masivos restringidos a Admin+.")
 
     async def on_user_join(self, user: User, position: Position):
         if user.id not in self.room_users:
@@ -75,41 +75,38 @@ class MyBot(BaseBot):
         guardar_log_chat(user.username, message, "publico")
         
         # --- 0. COMANDOS DE PODER (SOLO _ARMANDO_17_) ---
-        # Cambiar rangos: rango @usuario [fundador/admin/usuario]
         if msg_clean.startswith("rango @"):
             await asignar_rango_manual(self, user, message)
             return
             
-        # Enviar oro manual: tip @usuario [cantidad]
         if msg_clean.startswith("tip @"):
             await asignar_propina_maestra(self, user, message)
             return
 
-        # Control de sorteo automático (1g cada 5 min)
         if msg_clean in ["tip sala", "tip stop"]:
             await manejar_control_tips(self, user, message)
             return
 
-        # Obtenemos el rol para el resto de la lógica de permisos
+        # Obtenemos el rol del usuario
         rol = await obtener_rol(user.id)
         
-        # Filtro de Automod (Palabras prohibidas)
         if await verificar_automod(self, user, message, rol): 
             return 
 
         # --- 1. COMANDOS CON EXCLAMACIÓN (!) ---
         if message.startswith("!"):
-            # Cambio de outfit del bot
+            # Ropa (Fundador/Owner)
             if message.startswith("!outfit") or message.startswith("!ropa"):
                 if rol in ["fundador", "owner"]: 
                     await manejar_ropa(self, user, message)
                 return
 
-            # Moderación (!kick, !mute, !ban, !unmute)
+            # Moderación (!kick, !mute, !ban) -> Moderadores pueden usarlos
             await manejar_moderacion(self, user, message)
             
-            # Movimiento (!ir, !tp)
-            await manejar_movimiento(self, user, message)
+            # Movimiento general Staff
+            if rol in ["moderador", "admin", "fundador", "owner"]:
+                await manejar_movimiento(self, user, message)
             
             # Infraestructura (Solo Fundador/Owner)
             if rol in ["fundador", "owner"]:
@@ -122,61 +119,52 @@ class MyBot(BaseBot):
                     elif message.startswith("!enviar"): await mover_lista_seleccionada(self, user, message)
             return 
 
-        # --- 2. COMANDOS DE STAFF (TP / HECHIZAR) ---
-        if rol in ["admin", "fundador", "owner", "moderador"]:
+        # --- 2. COMANDOS EXCLUSIVOS ADMIN Y FUNDADOR ---
+        if rol in ["admin", "fundador", "owner"]:
+            # Movimiento y Seguimiento
+            if msg_clean in ["sigueme", "detente"]:
+                await manejar_movimiento(self, user, message)
+                return
+
+            # Emotes Masivos
+            if msg_clean.startswith("todos "):
+                await emote_todos(self, user, message)
+                return
+
+            # Hechizar y Stop
+            if msg_clean.startswith("hechizar @"):
+                await hechizar_usuario(self, user, message)
+                return
+            
+            if msg_clean == "stop":
+                await manejar_comando_stop(self, user)
+                return
+
+            # Teletransporte avanzado
             parts = msg_clean.split()
             if msg_clean.startswith("tp @") and len(parts) >= 3:
                 if len(parts) == 3: 
                     await tp_entre_usuarios(self, parts[1].replace("@",""), parts[2].replace("@",""))
                 elif len(parts) == 5:
-                    try: 
-                        await tp_a_coordenadas_directo(self, parts[1].replace("@",""), float(parts[2]), float(parts[3]), float(parts[4]))
-                    except: 
-                        pass
-                return
-            elif msg_clean.startswith("hechizar @"):
-                await hechizar_usuario(self, user, message)
+                    try: await tp_a_coordenadas_directo(self, parts[1].replace("@",""), float(parts[2]), float(parts[3]), float(parts[4]))
+                    except: pass
                 return
 
-        # --- 3. INTERACCIONES PÚBLICAS Y EMOTES ---
-        if msg_clean.startswith("todos "):
-            await emote_todos(self, user, message)
-            return
-        
-        if msg_clean == "stop":
-            await manejar_comando_stop(self, user)
-            return
-        
-        if msg_clean in ["sigueme", "detente"]:
-            await manejar_movimiento(self, user, message)
-            return
-
-        # Ejecutar emotes por número (1-92) o nombre
+        # --- 3. INTERACCIONES PÚBLICAS ---
+        # Emotes por número (1-92)
         if await procesar_emote_directo(self, user, msg_clean): 
             return
         
-        # Teletransporte por nombre de lugar guardado
+        # Teletransporte por nombre público
         if await viajar_a_nombre_directo(self, user, message): 
             return
 
-        # --- 4. CEREBRO IA (STEFFI) ---
-        # Responde con personalidad si mencionan a Steffi o al Bot
+        # Cerebro IA (Steffi)
         if "steffi" in msg_clean:
             respuesta_ia = await generar_respuesta_ia(user.username, message)
             await self.highrise.chat(respuesta_ia)
             return
 
     async def on_whisper(self, user: User, message: str):
-        # Comando de posición por susurro
         if message.lower() == "!pos":
             res = await self.highrise.get_room_users()
-            pos = next((p for u, p in res.content if u.id == user.id), None)
-            if pos: 
-                await self.highrise.send_whisper(user.id, f"📍 Pos: {pos.x} {pos.y} {pos.z}")
-
-if __name__ == "__main__":
-    room_id = os.getenv("ROOM_ID")
-    api_token = os.getenv("BOT_TOKEN")
-    if room_id and api_token:
-        definitions = [BotDefinition(MyBot(), room_id, api_token)]
-        asyncio.run(main(definitions))

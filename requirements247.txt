@@ -1,0 +1,19 @@
+# --- MOTOR DEL BOT ---
+highrise-bot-sdk
+
+# --- INTELIGENCIA ARTIFICIAL ---
+google-generativeai
+
+# --- BASE DE DATOS Y RED ---
+supabase
+requests
+urllib3
+python-dotenv
+
+# --- UTILIDADES Y TIEMPOS ---
+pytz
+pydantic
+typing-extensions
+
+# --- SERVIDOR PARA 24/7 (KEEP ALIVE) ---
+flask
