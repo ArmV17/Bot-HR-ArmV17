@@ -1,10 +1,17 @@
 import os
 import asyncio
+import logging
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 from highrise import BaseBot, User, Position
 from highrise.__main__ import BotDefinition, main
+
+# --- 1. SILENCIAR TERMINAL (Flask y Warnings) ---
+# Esto elimina los mensajes de "Serving Flask" y "Running on http"
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+os.environ['WERKZEUG_RUN_MAIN'] = 'true'
 
 # --- SEGURIDAD, RANGOS Y ECONOMÍA ---
 from funciones.saludo.saludo import manejar_bienvenida, manejar_despedida
@@ -37,7 +44,6 @@ from funciones.movimiento.teleport_db import (
     crear_portal_externo, guardar_lugar, eliminar_lugar
 )
 
-# --- BASE DE DATOS Y ROPA ---
 from funciones.db import guardar_log_chat
 from funciones.ropa.ropa import manejar_ropa
 
@@ -45,16 +51,16 @@ load_dotenv()
 
 # --- CONFIGURACIÓN KEEP ALIVE ---
 app = Flask('')
-
 @app.route('/')
-def home():
-    return "Steffi V39: ¡SISTEMA ONLINE (Sin IA) 💅"
+def home(): return "Online"
 
 def run():
-    app.run(host='0.0.0.0', port=7860)
+    # Silenciamos el banner de Flask al arrancar
+    app.run(host='0.0.0.0', port=7860, debug=False, use_reloader=False)
 
 def keep_alive():
     t = Thread(target=run)
+    t.daemon = True
     t.start()
 
 class MyBot(BaseBot):
@@ -63,9 +69,11 @@ class MyBot(BaseBot):
         self.room_users = set()
 
     async def on_start(self, session_metadata):
-        print(f"✅ Steffi V39: BOT CONECTADO CON ID {session_metadata.user_id}")
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print("✅ Bot en Linea")
+        
         await asyncio.sleep(4)
-        await self.highrise.chat("¡Steffi V39 ya llegó, mis cielas! 💅✨")
+        await self.highrise.chat("¡Steffi Actidada 💅✨")
 
     async def on_user_join(self, user: User, position: Position):
         if user.id not in self.room_users:
@@ -87,7 +95,6 @@ class MyBot(BaseBot):
         msg_clean = message.lower().strip()
         guardar_log_chat(user.username, message, "publico")
         
-        # --- 0. COMANDOS DE PODER ---
         if msg_clean.startswith("rango @"):
             await asignar_rango_manual(self, user, message)
             return
@@ -101,7 +108,6 @@ class MyBot(BaseBot):
         rol = await obtener_rol(user.id)
         if await verificar_automod(self, user, message, rol): return 
 
-        # --- 1. COMANDOS CON ! ---
         if message.startswith("!"):
             if message.startswith("!outfit") or message.startswith("!ropa"):
                 if rol in ["fundador", "owner"]: await manejar_ropa(self, user, message)
@@ -119,7 +125,6 @@ class MyBot(BaseBot):
                     elif message.startswith("!enviar"): await mover_lista_seleccionada(self, user, message)
             return 
 
-        # --- 2. COMANDOS STAFF ALTO ---
         if rol in ["admin", "fundador", "owner"]:
             if msg_clean in ["sigueme", "detente"]:
                 await manejar_movimiento(self, user, message)
@@ -142,8 +147,6 @@ class MyBot(BaseBot):
                     except: pass
                 return
 
-        # --- 3. INTERACCIONES PÚBLICAS Y EMOTES ---
-        # Si pones un número (1, 2, 3...) o emote directo, aquí se procesa.
         if await procesar_emote_directo(self, user, msg_clean): 
             return
             
@@ -163,6 +166,13 @@ if __name__ == "__main__":
     if room_id and api_token:
         keep_alive() 
         definitions = [BotDefinition(MyBot(), room_id, api_token)]
-        asyncio.run(main(definitions))
+        
+        # Bucle de reconexión silencioso
+        while True:
+            try:
+                asyncio.run(main(definitions))
+            except Exception:
+                import time
+                time.sleep(5)
     else:
         print("❌ Error: Faltan las variables de entorno en el archivo .env")
