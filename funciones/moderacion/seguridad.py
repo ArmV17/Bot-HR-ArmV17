@@ -1,88 +1,50 @@
 from highrise import BaseBot, User
 import pytz
 from datetime import datetime
-from funciones.db import guardar_usuario_db # Importamos la DB
-from funciones.db import supabase, registrar_moderacion
-
-lista_negra_palabras = []
+from funciones.db import supabase, registrar_moderacion, guardar_usuario_db
 
 async def registrar_entrada(bot: BaseBot, user: User):
-    # Guardamos en la nube (Supabase)
-    guardar_usuario_db(user.id, user.username)
-    
-    # Mensaje de log
-    print(f"Seguridad: Registrado {user.username} con ID {user.id}")
-
-async def cargar_palabras():
-    global lista_negra_palabras
-    response = supabase.table("palabras_prohibidas").select("palabra").execute()
-    lista_negra_palabras = [item['palabra'].lower() for item in response.data]
+    try:
+        guardar_usuario_db(user.id, user.username)
+        print(f"🛡️ Seguridad: Registrado {user.username}")
+    except: pass
 
 async def verificar_automod(bot, user, message, rol_ejecutor):
-    # Inmunidad para rangos altos
-    if rol_ejecutor in ["admin", "fundador"]:
-        return False
+    if rol_ejecutor in ["admin", "fundador", "owner"]: return False
 
-    # 1. Normalización total para detección (ignora Mayúsculas/Minúsculas)
     msg_limpio = message.lower()
     
-    # Traemos palabras prohibidas
-    response = supabase.table("palabras_prohibidas").select("palabra").execute()
-    palabras = [p['palabra'].lower() for p in response.data]
+    try:
+        # Obtenemos palabras prohibidas (puedes cachear esto luego para más velocidad)
+        res_palabras = supabase.table("palabras_prohibidas").select("palabra").execute()
+        palabras = [p['palabra'].lower() for p in res_palabras.data]
 
-    palabra_detectada = None
-    for p in palabras:
-        if p in msg_limpio:
-            palabra_detectada = p
-            break
+        palabra_detectada = next((p for p in palabras if p in msg_limpio), None)
 
-    if palabra_detectada:
-        # Consultar historial de este usuario específico
-        res = supabase.table("advertencias_automod").select("contador").eq("id_jugador", user.id).execute()
-        
-        faltas_actuales = res.data[0]['contador'] if res.data else 0
-        nuevas_faltas = faltas_actuales + 1
+        if palabra_detectada:
+            res_adv = supabase.table("advertencias_automod").select("contador").eq("id_jugador", user.id).execute()
+            faltas = res_adv.data[0]['contador'] if res_adv.data else 0
+            nuevas_faltas = faltas + 1
 
-        # Horario de México (Saltillo)
-        zona_mx = pytz.timezone('America/Mexico_City')
-        fecha_mx = datetime.now(zona_mx).strftime("%d/%m/%Y %I:%M %p")
+            zona_mx = pytz.timezone('America/Mexico_City')
+            fecha_mx = datetime.now(zona_mx).strftime("%d/%m/%Y %I:%M %p")
 
-        if nuevas_faltas < 3:
-            # --- ADVERTENCIA PRIVADA (SUSURRO) ---
-            await bot.highrise.send_whisper(user.id, f"⚠️ ¡ADVERTENCIA {nuevas_faltas}/3!")
-            await bot.highrise.send_whisper(user.id, f"Detectado uso de palabra prohibida.")
-            await bot.highrise.send_whisper(user.id, "Si llegas a 3 faltas serás BANEADO PERMANENTEMENTE.")
-            
-            # Guardar con USERNAME incluido
-            supabase.table("advertencias_automod").upsert({
-                "id_jugador": user.id,
-                "username": user.username, # Guardamos el nombre para tu control
-                "contador": nuevas_faltas,
-                "ultima_falta": palabra_detectada,
-                "actualizado_el": fecha_mx
-            }).execute()
-            
-            print(f"⚠️ Falta {nuevas_faltas} para {user.username} (ID: {user.id})")
-            return False
-
-        else:
-            # --- BANEO PERMANENTE AL LLEGAR A LA 3ra FALTA ---
-            try:
+            if nuevas_faltas < 3:
+                await bot.highrise.send_whisper(user.id, f"⚠️ ¡ADVERTENCIA {nuevas_faltas}/3!")
+                supabase.table("advertencias_automod").upsert({
+                    "id_jugador": user.id,
+                    "username": user.username,
+                    "contador": nuevas_faltas,
+                    "ultima_falta": palabra_detectada,
+                    "actualizado_el": fecha_mx
+                }).execute()
+                return False
+            else:
                 await bot.highrise.moderate_room(user.id, "ban", 52560000)
-                
-                registrar_moderacion(
-                    ejecutor="SISTEMA AUTO-MOD",
-                    objetivo=user.username,
-                    accion="BAN PERMANENTE",
-                    razon=f"Acumulación de 3 advertencias. Última palabra: '{palabra_detectada}'"
-                )
-                
-                # Borramos las advertencias porque el baneo ya es definitivo
+                registrar_moderacion("SISTEMA AUTO-MOD", user.username, "BAN PERMANENTE")
                 supabase.table("advertencias_automod").delete().eq("id_jugador", user.id).execute()
-                
-                await bot.highrise.chat(f"🚫 @{user.username} ha sido baneado permanentemente tras ignorar 3 advertencias de Auto-Mod.")
+                await bot.highrise.chat(f"🚫 @{user.username} baneado por Auto-Mod (3/3).")
                 return True
-            except Exception as e:
-                print(f"Error al ejecutar ban: {e}")
-                
+    except Exception as e:
+        print(f"⚠️ Error en AutoMod: {e}")
     return False

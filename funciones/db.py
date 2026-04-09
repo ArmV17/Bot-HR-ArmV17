@@ -6,13 +6,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Limpieza de variables de entorno
 url = os.getenv("SUPABASE_URL", "").strip().replace('"', '').replace("'", "")
 key = os.getenv("SUPABASE_KEY", "").strip().replace('"', '').replace("'", "")
 
 try:
     supabase: Client = create_client(url, key)
+    print("✅ Conexión con Supabase establecida")
 except Exception as e:
-    print(f"❌ Error Supabase: {e}")
+    print(f"❌ Error crítico Supabase: {e}")
+
+async def obtener_rol(user_id: str):
+    """Consulta el tier del usuario en Supabase."""
+    try:
+        response = supabase.table("usuarios").select("rol").eq("id_jugador", user_id).execute()
+        if response.data:
+            return response.data[0]['rol'].lower()
+    except Exception as e:
+        print(f"⚠️ Error consultando rol: {e}")
+    return "usuario"
 
 def guardar_usuario_db(user_id: str, username: str):
     try:
@@ -32,7 +44,6 @@ def registrar_moderacion(ejecutor: str, objetivo: str, accion: str, razon: str =
     except Exception as e:
         print(f"❌ Error Historial: {e}")
 
-# ESTA ES LA FUNCIÓN QUE TE ESTÁ DANDO EL ERROR DE IMPORTACIÓN
 def guardar_log_chat(username: str, mensaje: str, canal: str):
     try:
         zona_mx = pytz.timezone('America/Mexico_City')
@@ -44,7 +55,8 @@ def guardar_log_chat(username: str, mensaje: str, canal: str):
 
 def limpiar_tabla_chat():
     try:
-        supabase.table("log_chat").delete().neq("id", 0).execute()
+        # Nota: neq("id", 0) es un truco para borrar todo si el ID empieza en 1
+        supabase.table("log_chat").delete().neq("username", "sistema_null").execute()
         return True
     except Exception as e:
         print(f"❌ Error Limpiar: {e}")

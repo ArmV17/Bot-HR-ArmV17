@@ -1,12 +1,15 @@
-from highrise import BaseBot, User, Position
+from highrise import BaseBot, User
 
 async def manejar_bienvenida(bot: BaseBot, user: User):
-    """Saluda al usuario y lanza una reacción de corazón"""
-    # El mensaje que pediste
-    await bot.highrise.chat(f"🌟 ¡Bienvenid@ {user.username}! 🌟\n(Comandos en mi Biografía)")
-    # Reacción de corazón
-    await bot.highrise.react("heart", user.id)
+    try:
+        await bot.highrise.chat(f"🌟 ¡Bienvenid@ {user.username}! 🌟\n(Comandos en mi Biografía)")
+        await bot.highrise.react("heart", user.id)
+    except Exception as e:
+        print(f"⚠️ No se pudo dar la bienvenida completa a {user.username}: {e}")
 
 async def manejar_despedida(bot: BaseBot, user: User):
-    """Despide al usuario cuando sale de la sala"""
-    await bot.highrise.chat(f"👋 {user.username}, gracias por acompañarnos.")
+    """Despide al usuario cuando sale de la sala."""
+    try:
+        await bot.highrise.chat(f"👋 {user.username}, gracias por acompañarnos.")
+    except Exception as e:
+        print(f"⚠️ Error al despedir a {user.username}: {e}")
