@@ -11,7 +11,6 @@ from highrise.__main__ import BotDefinition, main
 # Esto elimina los mensajes de "Serving Flask" y "Running on http"
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
-os.environ['WERKZEUG_RUN_MAIN'] = 'true'
 
 # --- SEGURIDAD, RANGOS Y ECONOMÍA ---
 from funciones.saludo.saludo import manejar_bienvenida, manejar_despedida
@@ -19,6 +18,7 @@ from funciones.moderacion.seguridad import registrar_entrada, verificar_automod
 from funciones.moderacion.comandos import obtener_rol, manejar_moderacion
 from funciones.moderacion.rango import asignar_rango_manual
 from funciones.economia.tips import asignar_propina_maestra, manejar_control_tips
+from funciones.moderacion.multi_bot import rentar_bot, apagar_bot_actual
 
 # --- EMOTES Y DIVERSIÓN ---
 from funciones.emotes.bucle import (
@@ -41,7 +41,7 @@ from funciones.movimiento.mover import (
 from funciones.movimiento.perimetro import verificar_proximidad_tp
 from funciones.movimiento.teleport_db import (
     viajar_a_nombre_directo, marcar_proximidad, 
-    crear_portal_externo, guardar_lugar, eliminar_lugar
+    crear_portal_externo, guardar_lugar, eliminar_lugar, eliminar_sensor
 )
 
 from funciones.db import guardar_log_chat
@@ -69,11 +69,21 @@ class MyBot(BaseBot):
         self.room_users = set()
 
     async def on_start(self, session_metadata):
-        os.system('cls' if os.name == 'nt' else 'clear')
+        # ... tu código actual ...
         print("✅ Bot en Linea")
         
-        await asyncio.sleep(4)
-        await self.highrise.chat("¡Steffi Actidada 💅✨")
+        # Lógica de Autodestrucción por Renta
+        tiempo_renta = os.getenv("TIEMPO_RENTA")
+        if tiempo_renta:
+            segundos = int(tiempo_renta)
+            print(f"🕒 Este bot se apagará en {segundos} segundos.")
+            
+            async def temporizador_salida():
+                await asyncio.sleep(segundos)
+                print("⏰ Tiempo de renta agotado. Cerrando...")
+                os._exit(0) # El bot se apaga. 
+            
+            asyncio.create_task(temporizador_salida())
 
     async def on_user_join(self, user: User, position: Position):
         if user.id not in self.room_users:
@@ -116,8 +126,12 @@ class MyBot(BaseBot):
             if rol in ["moderador", "admin", "fundador", "owner"]:
                 await manejar_movimiento(self, user, message)
             if rol in ["fundador", "owner"]:
-                if any(message.startswith(c) for c in ["!sensor", "!portal", "!guardar", "!eliminar", "!traslado", "!enviar"]):
-                    if message.startswith("!sensor"): await marcar_proximidad(self, user, message)
+                if any(message.startswith(c) for c in ["!sensor", "!portal", "!guardar", "!eliminar", "!traslado", "!enviar", "!borrar_sensor"]):
+                    
+                    if message.startswith("!borrar_sensor"): 
+                        await eliminar_sensor(self, user, message)
+                    
+                    elif message.startswith("!sensor"): await marcar_proximidad(self, user, message)
                     elif message.startswith("!portal"): await crear_portal_externo(self, user, message)
                     elif message.startswith("!guardar"): await guardar_lugar(self, user, message)
                     elif message.startswith("!eliminar"): await eliminar_lugar(self, user, message)
@@ -154,10 +168,24 @@ class MyBot(BaseBot):
             return
 
     async def on_whisper(self, user: User, message: str):
-        if message.lower() == "!pos":
+        msg = message.lower().strip()
+        
+        # Comando para rentar o activar (usamos la misma función)
+        if msg.startswith("rentar ") or msg.startswith("activar "):
+            await rentar_bot(self, user, message)
+            return
+
+        # Comando para apagar el bot actual
+        if msg == "apagar":
+            await apagar_bot_actual(self, user)
+            return
+
+        # Tu comando de posición
+        if msg == "!pos":
             res = await self.highrise.get_room_users()
-            pos = next((p for u, p in res.content if u.id == user.id), None)
-            if pos: await self.highrise.send_whisper(user.id, f"📍 Pos: {pos.x} {pos.y} {pos.z}")
+            pos = next((p for u, pos in res.content if u.id == user.id), None)
+            if pos: 
+                await self.highrise.send_whisper(user.id, f"📍 Pos: {pos.x} {pos.y} {pos.z}")
 
 if __name__ == "__main__":
     room_id = os.getenv("ROOM_ID")
