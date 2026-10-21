@@ -8,7 +8,6 @@ from highrise import BaseBot, User, Position
 from highrise.__main__ import BotDefinition, main
 
 # --- 1. SILENCIAR TERMINAL (Flask y Warnings) ---
-# Esto elimina los mensajes de "Serving Flask" y "Running on http"
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
@@ -55,7 +54,6 @@ app = Flask('')
 def home(): return "Online"
 
 def run():
-    # Silenciamos el banner de Flask al arrancar
     app.run(host='0.0.0.0', port=7860, debug=False, use_reloader=False)
 
 def keep_alive():
@@ -69,10 +67,8 @@ class MyBot(BaseBot):
         self.room_users = set()
 
     async def on_start(self, session_metadata):
-        # ... tu código actual ...
         print("✅ Bot en Linea")
         
-        # Lógica de Autodestrucción por Renta
         tiempo_renta = os.getenv("TIEMPO_RENTA")
         if tiempo_renta:
             segundos = int(tiempo_renta)
@@ -81,7 +77,7 @@ class MyBot(BaseBot):
             async def temporizador_salida():
                 await asyncio.sleep(segundos)
                 print("⏰ Tiempo de renta agotado. Cerrando...")
-                os._exit(0) # El bot se apaga. 
+                os._exit(0)
             
             asyncio.create_task(temporizador_salida())
 
@@ -118,19 +114,27 @@ class MyBot(BaseBot):
         rol = await obtener_rol(user.id)
         if await verificar_automod(self, user, message, rol): return 
 
+        if msg_clean == "stop":
+            await manejar_comando_stop(self, user)
+            return    
+
         if message.startswith("!"):
-            if message.startswith("!outfit") or message.startswith("!ropa"):
-                if rol in ["fundador", "owner"]: await manejar_ropa(self, user, message)
+            if any(message.startswith(prefix) for prefix in [
+                "!search", "!buscar", "!buy", "!outfit", "!ropa", "!equip", "!remove", "!skin", "!hair", "!eye", "!lips"
+            ]):
+                if rol in ["fundador", "owner"]: 
+                    await manejar_ropa(self, user, message)
                 return
+            
             await manejar_moderacion(self, user, message)
+            
             if rol in ["moderador", "admin", "fundador", "owner"]:
                 await manejar_movimiento(self, user, message)
+                
             if rol in ["fundador", "owner"]:
                 if any(message.startswith(c) for c in ["!sensor", "!portal", "!guardar", "!eliminar", "!traslado", "!enviar", "!borrar_sensor"]):
-                    
                     if message.startswith("!borrar_sensor"): 
                         await eliminar_sensor(self, user, message)
-                    
                     elif message.startswith("!sensor"): await marcar_proximidad(self, user, message)
                     elif message.startswith("!portal"): await crear_portal_externo(self, user, message)
                     elif message.startswith("!guardar"): await guardar_lugar(self, user, message)
@@ -148,9 +152,6 @@ class MyBot(BaseBot):
                 return
             if msg_clean.startswith("hechizar @"):
                 await hechizar_usuario(self, user, message)
-                return
-            if msg_clean == "stop":
-                await manejar_comando_stop(self, user)
                 return
             
             parts = msg_clean.split()
@@ -170,17 +171,14 @@ class MyBot(BaseBot):
     async def on_whisper(self, user: User, message: str):
         msg = message.lower().strip()
         
-        # Comando para rentar o activar (usamos la misma función)
         if msg.startswith("rentar ") or msg.startswith("activar "):
             await rentar_bot(self, user, message)
             return
 
-        # Comando para apagar el bot actual
         if msg == "apagar":
             await apagar_bot_actual(self, user)
             return
 
-        # Tu comando de posición
         if msg == "!pos":
             res = await self.highrise.get_room_users()
             pos = next((p for u, pos in res.content if u.id == user.id), None)
@@ -195,7 +193,6 @@ if __name__ == "__main__":
         keep_alive() 
         definitions = [BotDefinition(MyBot(), room_id, api_token)]
         
-        # Bucle de reconexión silencioso
         while True:
             try:
                 asyncio.run(main(definitions))

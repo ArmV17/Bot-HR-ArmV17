@@ -2,6 +2,23 @@ modules = ["python-3.12"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["cacert", "cargo", "libffi", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
 
 [agent]
 expertMode = true
+
+[[ports]]
+localPort = 7860
+externalPort = 3000
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "https://jlgnzmykqmhbkfcfeodo.supabase.co"
+SUPABASE_KEY = "sb_publishable_HWI0yt_Mdb-Ji5mNetdMww_VuML3J7Z"
+BOT_TOKEN = "c5104c929e220b6d27957a3148e0266ee0815ae97fe6cd8155cf9a6dd7afbced"
+ROOM_ID = "66d0d95fcbeb72c3ab0974a6"
