@@ -1,5 +1,6 @@
 highrise-bot-sdk>=25.1.0
 Flask>=3.0.0
+pendulum==3.2.0
 python-dotenv
 supabase
 httpx
