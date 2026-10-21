@@ -1,6 +1,8 @@
+--only-binary=:all:
 highrise-bot-sdk
 Flask
 python-dotenv
 supabase
 requests
 werkzeug
+pendulum
