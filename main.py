@@ -4,6 +4,7 @@ import logging
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
+from multiprocessing import Process # <--- Importado para ejecutar el streamer de fondo
 from highrise import BaseBot, User, Position
 from highrise.__main__ import BotDefinition, main
 
@@ -27,6 +28,10 @@ from funciones.emotes.bucle import (
     hechizar_usuario
 )
 from funciones.emotes.todos import emote_todos
+
+# --- MÚSICA Y STREAMING ---
+from funciones.musica.musica import manejar_comando_musica, manejar_musica_por_propina # <--- Importadas ambas funciones
+from streamer import reproducir_stream # <--- Importación del servicio de transmisión
 
 # --- MOVIMIENTO Y MUNDO ---
 from funciones.movimiento.mover import (
@@ -68,17 +73,17 @@ class MyBot(BaseBot):
 
     async def on_start(self, session_metadata):
         print("✅ Bot en Linea")
-        
+
         tiempo_renta = os.getenv("TIEMPO_RENTA")
         if tiempo_renta:
             segundos = int(tiempo_renta)
             print(f"🕒 Este bot se apagará en {segundos} segundos.")
-            
+
             async def temporizador_salida():
                 await asyncio.sleep(segundos)
                 print("⏰ Tiempo de renta agotado. Cerrando...")
                 os._exit(0)
-            
+
             asyncio.create_task(temporizador_salida())
 
     async def on_user_join(self, user: User, position: Position):
@@ -100,7 +105,12 @@ class MyBot(BaseBot):
     async def on_chat(self, user: User, message: str):
         msg_clean = message.lower().strip()
         guardar_log_chat(user.username, message, "publico")
-        
+
+        # --- COMANDOS DE MÚSICA (!play / !pedir) ---
+        if msg_clean.startswith("!play ") or msg_clean.startswith("!pedir "):
+            await manejar_comando_musica(self, user, message)
+            return
+
         if msg_clean.startswith("rango @"):
             await asignar_rango_manual(self, user, message)
             return
@@ -114,23 +124,36 @@ class MyBot(BaseBot):
         rol = await obtener_rol(user.id)
         if await verificar_automod(self, user, message, rol): return 
 
+        # 'stop' detiene exclusivamente el bucle de emotes
         if msg_clean == "stop":
             await manejar_comando_stop(self, user)
             return    
 
+        # 'sc' detiene exclusivamente el bucle de cambio de color/piel
+        if msg_clean == "sc":
+            if rol in ["fundador", "owner"]:
+                await manejar_ropa(self, user, message)
+            return
+
         if message.startswith("!"):
+            # Incluimos !test protegido para admin, fundador y owner
+            if message.startswith("!test"):
+                if rol in ["admin", "fundador", "owner"]:
+                    await procesar_emote_directo(self, user, message)
+                return
+
             if any(message.startswith(prefix) for prefix in [
                 "!search", "!buscar", "!buy", "!outfit", "!ropa", "!equip", "!remove", "!skin", "!hair", "!eye", "!lips"
             ]):
                 if rol in ["fundador", "owner"]: 
                     await manejar_ropa(self, user, message)
                 return
-            
+
             await manejar_moderacion(self, user, message)
-            
+
             if rol in ["moderador", "admin", "fundador", "owner"]:
                 await manejar_movimiento(self, user, message)
-                
+
             if rol in ["fundador", "owner"]:
                 if any(message.startswith(c) for c in ["!sensor", "!portal", "!guardar", "!eliminar", "!traslado", "!enviar", "!borrar_sensor"]):
                     if message.startswith("!borrar_sensor"): 
@@ -153,7 +176,7 @@ class MyBot(BaseBot):
             if msg_clean.startswith("hechizar @"):
                 await hechizar_usuario(self, user, message)
                 return
-            
+
             parts = msg_clean.split()
             if msg_clean.startswith("tp @") and len(parts) >= 3:
                 if len(parts) == 3: await tp_entre_usuarios(self, parts[1].replace("@",""), parts[2].replace("@",""))
@@ -164,13 +187,13 @@ class MyBot(BaseBot):
 
         if await procesar_emote_directo(self, user, msg_clean): 
             return
-            
+
         if await viajar_a_nombre_directo(self, user, message): 
             return
 
     async def on_whisper(self, user: User, message: str):
         msg = message.lower().strip()
-        
+
         if msg.startswith("rentar ") or msg.startswith("activar "):
             await rentar_bot(self, user, message)
             return
@@ -185,19 +208,50 @@ class MyBot(BaseBot):
             if pos: 
                 await self.highrise.send_whisper(user.id, f"📍 Pos: {pos.x} {pos.y} {pos.z}")
 
+    async def on_tip(self, sender: User, receiver: User, item):
+        """Detecta cuando alguien da propina al bot de forma segura para otorgar turnos de música"""
+        try:
+            amount = 0
+            if hasattr(item, 'amount'):
+                amount = int(item.amount)
+            else:
+                item_str = str(item)
+                if "10" in item_str: amount = 10
+                elif "50" in item_str: amount = 50
+                elif "100" in item_str: amount = 100
+                elif "500" in item_str: amount = 500
+                elif "1000" in item_str: amount = 1000
+                elif "5000" in item_str: amount = 5000
+                elif "10000" in item_str: amount = 10000
+                else: amount = 10
+
+            if amount >= 10:
+                await manejar_musica_por_propina(self, sender, amount)
+        except Exception as e:
+            print(f"⚠️ Error al procesar propina musical: {e}")
+
 if __name__ == "__main__":
     room_id = os.getenv("ROOM_ID")
     api_token = os.getenv("BOT_TOKEN")
-    
+
     if room_id and api_token:
-        keep_alive() 
+        keep_async = keep_alive() 
+
+        # --- INICIAR EL STREAMER DE MÚSICA EN SEGUNDO PLANO ---
+        stream_process = Process(target=reproducir_stream)
+        stream_process.daemon = True
+        stream_process.start()
+        print("📻 Proceso de streaming de música iniciado correctamente.")
+
         definitions = [BotDefinition(MyBot(), room_id, api_token)]
-        
+
         while True:
             try:
                 asyncio.run(main(definitions))
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ Error en el bot principal: {e}")
                 import time
                 time.sleep(5)
     else:
         print("❌ Error: Faltan las variables de entorno en el archivo .env")
+        
